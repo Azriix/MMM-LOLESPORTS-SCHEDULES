@@ -19,21 +19,34 @@ module.exports = NodeHelper.create({
       defaultClient.authentications["apiKeyAuth"]["apiKey"] = payload["apiKey"];
 
       api.getSchedule(
-        LolesportsApi.Locale.enUS,
+        self.getLocale(payload["hl"]),
         { leagueId: payload["leagueId"] },
         function (error, data, response) {
           if (error) {
             console.error(error);
           } else {
             // console.log("API called successfully. Returned data: " + JSON.stringify(data));
-            self.sendNotificationTest(data);
+            self.sendNotification("MMM-LOLESPORTS-SCHEDULES-SCHEDULE", data);
           }
         }
       );
     }
   },
-  // Example function send notification test
-  sendNotificationTest: function (payload) {
-    this.sendSocketNotification("MMM-LOLESPORTS-SCHEDULES-SCHEDULE", payload);
+  // Get correct locale
+  getLocale: function (hl) {
+    switch (hl) {
+      case "en-US": {
+        return LolesportsApi.Locale.enUS;
+      }
+      case "fr-FR": {
+        return LolesportsApi.Locale.frFR;
+      }
+      default:
+        return LolesportsApi.Locale.enUS;
+    }
   },
+  // Send Notification to module
+  sendNotification: function (str, payload) {
+    this.sendSocketNotification(str, payload);
+  }
 });

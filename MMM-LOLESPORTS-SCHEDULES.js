@@ -1,14 +1,19 @@
 Module.register("MMM-LOLESPORTS-SCHEDULES", {
   // Default module config
   defaults: {
-    updateInterval: 60, // minutes
+    updateInterval: 30, // minutes
     // lang: config.language,
     apiKey: "0TvQnueqKa5mxJntVWt0w4LpLfEkrV1Ta8rQBb9Z",
     basePath: "https://esports-api.lolesports.com/persisted/gw",
     hl: "en-US",
     // Custom
-    leagueId: ["98767991299243165"], // NA LCS
-    numberOfFutureGames: 5,
+    leagueId: [
+      ["105266103462388553"], // LFL
+      ["98767991310872058"], // LCK
+      ["98767991302996019"], // LEC
+    ],
+    teamId: ['KC', 'T1', 'G2', 'BDS', 'XL', 'VIT'],
+    numberOfFutureGames: 6,
     use24HourTime: false,
     useTeamFullName: false,
     useInternationalDateFormat: false, // false = month day (US), true = day month (International)
@@ -17,6 +22,11 @@ Module.register("MMM-LOLESPORTS-SCHEDULES", {
     showRegionAndBestOf: true,
     showTournamentBlock: false,
   },
+
+  totalEvents: [],
+
+  // Number of events loaded
+  eventsLoaded: 0,
 
   // Module properties.
   groupedSchedules: [],
@@ -52,29 +62,38 @@ Module.register("MMM-LOLESPORTS-SCHEDULES", {
   },
   // Fetch schedule for provided league ids
   getData: function () {
-    this.sendSocketNotification("MMM-LOLESPORTS-SCHEDULES-GET-SCHEDULE", {
-      apiKey: this.config.apiKey,
-      basePath: this.config.basePath,
-      leagueId: this.config.leagueId,
-      hl: this.config.hl,
-    });
+    this.totalEvents = [];
+    this.eventsLoaded = 0;
+    for (let i = 0; i < this.config.leagueId.length; i++) {
+      this.sendSocketNotification("MMM-LOLESPORTS-SCHEDULES-GET-SCHEDULE", {
+        apiKey: this.config.apiKey,
+        basePath: this.config.basePath,
+        leagueId: this.config.leagueId[i],
+        hl: this.config.hl,
+      });
+    }
   },
 
   // Schedule data is coming back
-  socketNotificationReceived: function (notification, payload) {
+  socketNotificationReceived: function (notification, data) {
     if (notification === "MMM-LOLESPORTS-SCHEDULES-SCHEDULE") {
-      this.getSchedulesData(payload);
+      if (!data || !data.hasOwnProperty("data")) {
+        return []; // Wrong league id most likely
+      }
+      if (!data["data"]["schedule"] || !data["data"]["schedule"]["events"]) {
+        return []; // No events for league id
+      }
+      const events = data["data"]["schedule"]["events"];
+      this.eventsLoaded++;
+      this.totalEvents = this.totalEvents.concat(events);
+    }
+    if (this.eventsLoaded === this.config.leagueId.length) {
+      this.getSchedulesData(this.totalEvents);
     }
   },
   // Condense schedule data and render it
-  getSchedulesData: function (data) {
-    if (!data || !data.hasOwnProperty("data")) {
-      return []; // Wrong league id most likely
-    }
-    if (!data["data"]["schedule"] || !data["data"]["schedule"]["events"]) {
-      return []; // No events for league id
-    }
-    const events = data["data"]["schedule"]["events"];
+  getSchedulesData: function (events) {
+    console.log("events", events);
 
     // Date helpers
     const getMidnight = (day) => {
@@ -108,10 +127,17 @@ Module.register("MMM-LOLESPORTS-SCHEDULES", {
 
     const futureEvents = events
       .filter((event) => {
+        // Find a Team in the event
+        var index = event["match"]["teams"].findIndex((team) => {
+          return this.config.teamId.includes(team["code"]);
+        });
         return (
-          event["startTime"] > new Date().toISOString() ||
-          event["state"] === "inProgress"
+          (event["startTime"] > new Date().toISOString() ||
+          event["state"] === "inProgress") && index >= 0
         );
+      })
+      .sort((a, b) => {
+        return new Date(a["startTime"]) - new Date(b["startTime"]);
       })
       .slice(0, this.config.numberOfFutureGames)
       // Add custom fields for display
@@ -231,6 +257,7 @@ Module.register("MMM-LOLESPORTS-SCHEDULES", {
     };
     // Games grouped by day
     const groupedSchedulesMap = groupByDay(futureEvents);
+    console.log("groupedSchedulesMap", groupedSchedulesMap);
     const groupedSchedules = Object.values(groupedSchedulesMap);
     this.groupedSchedules = groupedSchedules;
     this.updateDom(500);
